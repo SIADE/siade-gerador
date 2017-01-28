@@ -1,5 +1,4 @@
 const Parse = require('parse/node')
-const math = require('mathjs')
 const faker = require("faker")
 const rwc = require("random-weighted-choice")
 const util = require("util")
@@ -120,7 +119,7 @@ function gerar_dados(config) {
         console.log("Não gerar bairros")
         return Parse.Promise.resolve()
     }
-    console.log("Apagando dados antigos...")
+    console.log("Gerando %d Bairros", config.qtd)
     return limpar_dados().then(function() {    
         return gerar_bairros(config)
     }).then(function(){
@@ -129,6 +128,7 @@ function gerar_dados(config) {
 }
 
 function limpar_dados() {
+    console.log("Apagando dados antigos...")
     classes = [Bairro, Logradouro, Quadra, Lado, Imovel]
     promises = classes.map(function(cls) {
         return utils.deleteAll(new Parse.Query(cls))
@@ -137,26 +137,26 @@ function limpar_dados() {
 }
 
 function gerar_bairros(config) {
-    tam_lat = utils.random_number(config.tam_lat.min, config.tam_lat.max)
-    tam_lon = utils.random_number(config.tam_lon.min, config.tam_lon.max)
-    console.log("Gerando %d bairros (%d x %d)", config.qtd, tam_lat, tam_lon)
     promise = Parse.Promise.as()
-    math.range(0, config.qtd).forEach(function() {
+    var tam_lat, tam_lon
+    for(var i = 0; i < config.qtd; i++) {
         promise = promise.then(function() {
-            return gerar_bairro()
-        }).then(function(bairro) {
-            return gerar_quadras(bairro, tam_lat, tam_lon)
+            tam_lat = utils.random_number(config.tam_lat.min, config.tam_lat.max)
+            tam_lon = utils.random_number(config.tam_lon.min, config.tam_lon.max)
+            return gerar_bairro(tam_lat, tam_lon)
         })
-    })
+    }
     return promise
 }
 
-function gerar_bairro() {
+function gerar_bairro(tam_lat, tam_lon) {
     var nome = random_bairro_nome()
-    console.log("* Bairro: %s", nome)
+    console.log("* Bairro: %s (%d x %d)", nome, tam_lat, tam_lon)
     bairro = new Bairro()
     bairro.set("nome", nome)
-    return bairro.save()
+    return bairro.save().then(function(bairro) {
+        return gerar_quadras(bairro, tam_lat, tam_lon)
+    })
 }
 
 function gerar_quadras(bairro, qtd_x, qtd_y) {
@@ -165,7 +165,6 @@ function gerar_quadras(bairro, qtd_x, qtd_y) {
     // fileiras de quadras
     promise = Parse.Promise.as()
     for(var x = 0; x < qtd_x; x++) {
-        var altura = 10
         if(x > 0) {
             ruaCima = ruaBaixo
         } else {
@@ -174,7 +173,6 @@ function gerar_quadras(bairro, qtd_x, qtd_y) {
         ruaBaixo = gerar_rua()
         // quadras da fileira
         for(var y = 0; y < qtd_y; y++) {
-            var largura = utils.random_number(10, 40)
             if(y > 0) {
                 ruaEsquerda = ruaDireira
             } else {
@@ -182,11 +180,13 @@ function gerar_quadras(bairro, qtd_x, qtd_y) {
             }
             ruaDireira = gerar_rua()
             promise = promise.then(function() {
+                altura = utils.random_number(6, 20)
+                largura = utils.random_number(4, 40)
                 return gerar_quadra_com_lados(bairro, numero_quadra++, [
-                    {logradouro: ruaEsquerda, numeros: math.range(x * altura + 2, (x + 1) * altura + 2, 2)},
-                    {logradouro: ruaCima, numeros: math.range(y * largura + 1, (y + 1) * largura + 1, 2)},
-                    {logradouro: ruaDireira, numeros: math.range(x * altura + 1, (x + 1) * altura + 1, 2)},
-                    {logradouro: ruaBaixo, numeros: math.range(y * largura + 2, (y + 1) * largura + 2, 2)}
+                    {logradouro: ruaEsquerda, numeros: utils.range(x * altura + 2, (x + 1) * altura + 2, 2)},
+                    {logradouro: ruaCima, numeros: utils.range(y * largura + 1, (y + 1) * largura + 1, 2)},
+                    {logradouro: ruaDireira, numeros: utils.range(x * altura + 1, (x + 1) * altura + 1, 2)},
+                    {logradouro: ruaBaixo, numeros: utils.range(y * largura + 2, (y + 1) * largura + 2, 2)}
                 ])
             })
         }
@@ -202,7 +202,7 @@ function gerar_rua() {
 
 function gerar_quadra_com_lados(bairro, numero, lados) {
     total_imoveis = lados.reduce(function(prev, curr, idx, arr) {
-        return prev + curr.numeros.size()[0]
+        return prev + curr.numeros.length
     }, 0)
     console.log("  Quadra %d (%d imoveis)", numero, total_imoveis)
 
@@ -211,7 +211,7 @@ function gerar_quadra_com_lados(bairro, numero, lados) {
         promise = promise.then(function() {
             return item.logradouro.save()
         }).then(function(logradouro) {
-            return gerar_lado(quadra, Number(idx)+1, logradouro, item.numeros.size()[0])
+            return gerar_lado(quadra, Number(idx)+1, logradouro, item.numeros.length)
         }).then(function(lado) {
             subPromise = Parse.Promise.as()
             item.numeros.forEach(function(value, idx) {
@@ -253,7 +253,13 @@ function gerar_imovel(lado, numero, ordem) {
     imovel.set("lado", lado)
     imovel.set("numero", numero)
     imovel.set("ordem", ordem)
-    imovel.set("tipo", 1)
+    imovel.set("tipo", utils.weighted_choice([0, 3, 3, 1, 2]))
+    imovel.set("habitantes", utils.weighted_choice([1, 2, 3, 3, 2, 1]))
+    imovel.set("caes", utils.weighted_choice([2, 3, 1, 1]))
+    imovel.set("gatos", utils.weighted_choice([2, 3, 1, 1]))
+    if(imovel.get("tipo") == 3) {
+        imovel.set("habitantes", 0)
+    }
     return imovel.save()
 }
 

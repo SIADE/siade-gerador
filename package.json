@@ -15,5 +15,8 @@
     "gerador-validador-cpf": "^3.1.1",
     "parse": "^1.9.2",
     "random-weighted-choice": "^0.1.3"
+  },
+  "scripts": {
+    "start": "node gerador.js"
   }
 }

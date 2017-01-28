@@ -1,7 +1,7 @@
 const Parse = require('parse/node')
-const util = require('util')
 const CPF = require("gerador-validador-cpf")
 const faker = require("faker")
+const utils = require('./utils')
 
 var Agente = Parse.User
 
@@ -23,9 +23,26 @@ function gerar_agentes(config) {
         agente.set("tipo", 0)
         all_agentes.push(agente)
     }
-    return Parse.Object.saveAll(all_agentes)
+    return limpar_dados().then(function() {
+        return Parse.Object.saveAll(all_agentes)
+    })
+}
+
+function limpar_dados() {
+    Parse.Cloud.useMasterKey()
+    return utils.deleteAll(new Parse.Query(Agente).equalTo("tipo", 0))
+}
+
+function gerar_admin(username, password) {
+    agente = new Agente()
+    agente.set("nome", "Admin")
+    agente.set("username", username)
+    agente.set("password", password)
+    agente.set("tipo", 1)
+    return agente.signUp()
 }
 
 module.exports = {
-    gerar_agentes: gerar_agentes
+    gerar_agentes: gerar_agentes,
+    gerar_admin: gerar_admin
 }
